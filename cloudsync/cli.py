@@ -1,0 +1,79 @@
+import argparse
+import sys
+
+from .providers import PROVIDERS
+from .state import SyncState
+from .sync import sync, check_quota
+
+
+def build_provider(args):
+    if args.provider == "gdrive":
+        from .providers import GoogleDriveProvider
+
+        return GoogleDriveProvider(
+            credentials_file=args.credentials,
+            token_file=args.token,
+            root_folder_id=args.root_folder_id or "root",
+        )
+    elif args.provider in ("s3", "minio"):
+        from .providers import S3Provider
+
+        return S3Provider(
+            bucket=args.bucket,
+            access_key=args.access_key,
+            secret_key=args.secret_key,
+            endpoint_url=args.endpoint_url,
+        )
+    raise ValueError(f"Unknown provider: {args.provider}")
+
+
+def main():
+    parser = argparse.ArgumentParser(prog="cloudsync")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("local_dir")
+    common.add_argument("--provider", choices=PROVIDERS.keys(), required=True)
+    common.add_argument("--remote-root", default="")
+    common.add_argument("--db", default=".cloudsync_state.db")
+    # gdrive options
+    common.add_argument("--credentials", default="credentials.json")
+    common.add_argument("--token", default="token.json")
+    common.add_argument("--root-folder-id", default=None)
+    # s3/minio options
+    common.add_argument("--bucket")
+    common.add_argument("--access-key")
+    common.add_argument("--secret-key")
+    common.add_argument("--endpoint-url")
+
+    sync_p = sub.add_parser("sync", parents=[common])
+    sync_p.add_argument(
+        "--no-delete",
+        action="store_true",
+        help="Do not delete remote files removed locally",
+    )
+
+    sub.add_parser("quota", parents=[common])
+
+    args = parser.parse_args()
+    provider = build_provider(args)
+
+    if args.command == "sync":
+        state = SyncState(args.db)
+        result = sync(
+            args.local_dir,
+            provider,
+            remote_root=args.remote_root,
+            state=state,
+            delete_remote=not args.no_delete,
+        )
+        state.close()
+        print(result)
+
+    elif args.command == "quota":
+        info = check_quota(args.local_dir, provider)
+        print(info)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
