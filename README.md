@@ -2,6 +2,8 @@
 
 Sync a local directory to cloud storage (Google Drive, S3, MinIO), with quota checking.
 
+Read the full documentation at [minlee0210.github.io/cloudsync](https://minlee0210.github.io/cloudsync/).
+
 ## Install
 
 ```bash

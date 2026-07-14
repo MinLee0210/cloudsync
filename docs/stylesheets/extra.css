@@ -1,0 +1,131 @@
+:root {
+  --ink: #17221f;
+  --muted-ink: #5d6a64;
+  --paper: #f6f3ec;
+  --paper-deep: #ebe5d8;
+  --moss: #246b56;
+  --moss-dark: #174c3d;
+  --coral: #dd765b;
+}
+
+[data-md-color-scheme="default"] {
+  --md-default-bg-color: var(--paper);
+  --md-default-fg-color: var(--ink);
+  --md-default-fg-color--light: var(--muted-ink);
+  --md-primary-fg-color: var(--moss-dark);
+  --md-primary-fg-color--light: var(--moss);
+  --md-accent-fg-color: var(--coral);
+  --md-code-bg-color: #e9e7df;
+}
+
+[data-md-color-scheme="slate"] {
+  --md-default-bg-color: #17211e;
+  --md-default-fg-color: #edf1e9;
+  --md-primary-fg-color: #234e40;
+  --md-accent-fg-color: #f28a6c;
+  --md-code-bg-color: #101715;
+}
+
+body {
+  background-image: radial-gradient(rgba(36, 107, 86, .08) 1px, transparent 1px);
+  background-size: 18px 18px;
+}
+
+.md-header {
+  box-shadow: 0 8px 24px rgba(23, 34, 31, .12);
+}
+
+.md-main__inner {
+  margin-top: 1.5rem;
+}
+
+.hero {
+  background: linear-gradient(135deg, rgba(36, 107, 86, .98), rgba(23, 76, 61, .94));
+  border-radius: 1.5rem;
+  color: #f7f4ec;
+  margin: 1rem 0 2.5rem;
+  overflow: hidden;
+  padding: clamp(2rem, 7vw, 5.5rem);
+  position: relative;
+}
+
+.hero::after {
+  border: 1px solid rgba(255, 255, 255, .22);
+  border-radius: 50%;
+  content: "";
+  height: 22rem;
+  position: absolute;
+  right: -7rem;
+  top: -8rem;
+  width: 22rem;
+}
+
+.hero h1 {
+  color: #fffaf0;
+  font-size: clamp(3rem, 10vw, 6.5rem);
+  letter-spacing: -.07em;
+  line-height: .9;
+  margin-bottom: 1.25rem;
+  position: relative;
+  z-index: 1;
+}
+
+.hero h3 {
+  color: #dcebe1;
+  font-weight: 400;
+  max-width: 34rem;
+  position: relative;
+  z-index: 1;
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .75rem;
+  margin-top: 2rem;
+  position: relative;
+  z-index: 1;
+}
+
+.hero .md-button {
+  border-color: rgba(255, 255, 255, .55);
+  color: #fffaf0;
+}
+
+.hero .md-button--primary {
+  background: var(--coral);
+  border-color: var(--coral);
+}
+
+.feature-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(3, 1fr);
+  margin: 1.5rem 0 2rem;
+}
+
+.feature-card {
+  background: rgba(255, 255, 255, .46);
+  border: 1px solid rgba(36, 107, 86, .16);
+  border-radius: 1rem;
+  padding: 1.25rem;
+}
+
+.feature-card h4 {
+  color: var(--moss-dark);
+  margin-top: 0;
+}
+
+.md-typeset code {
+  border-radius: .3rem;
+}
+
+@media (max-width: 700px) {
+  .feature-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .hero {
+    border-radius: 1rem;
+  }
+}
