@@ -16,8 +16,13 @@ Common options:
 | `--remote-root` | empty | Remote folder or object prefix |
 | `--db` | `.cloudsync_state.db` | SQLite ledger path |
 | `--no-delete` | off | Keep remote files removed locally |
+| `--workers` | `1` | Number of concurrent workers for uploads/updates/deletes |
+| `--ignore` | empty | Glob pattern of files/directories to ignore (can be specified multiple times) |
 
 Google Drive options include `--credentials`, `--token`, and `--root-folder-id`. S3/MinIO options include `--bucket`, `--access-key`, `--secret-key`, and `--endpoint-url`.
+
+Files and directories can also be ignored by defining patterns in a `.cloudsyncignore` file inside the local sync root folder.
+
 
 ## Quota
 

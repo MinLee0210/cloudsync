@@ -1,3 +1,4 @@
+import threading
 from typing import Dict, Optional
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
@@ -15,25 +16,35 @@ class GoogleDriveProvider(CloudProvider):
         token_file: str = "token.json",
         root_folder_id: str = "root",
     ):
-        creds = get_credentials(credentials_file, token_file)
-        self.service = build("drive", "v3", credentials=creds)
+        self.credentials_file = credentials_file
+        self.token_file = token_file
         self.root_folder_id = root_folder_id
+        self._thread_local = threading.local()
+        self._lock = threading.Lock()
+        self.creds = get_credentials(credentials_file, token_file)
+
+    @property
+    def service(self):
+        if not hasattr(self._thread_local, "service"):
+            self._thread_local.service = build("drive", "v3", credentials=self.creds)
+        return self._thread_local.service
 
     # ------------------------------------------------------------------
     def _ensure_folder(self, name: str, parent_id: str) -> str:
         """Get or create a folder named `name` under parent_id, return its id."""
-        query = (
-            f"name = '{name}' and mimeType = '{FOLDER_MIME}' "
-            f"and '{parent_id}' in parents and trashed = false"
-        )
-        res = self.service.files().list(q=query, fields="files(id)").execute()
-        files = res.get("files", [])
-        if files:
-            return files[0]["id"]
+        with self._lock:
+            query = (
+                f"name = '{name}' and mimeType = '{FOLDER_MIME}' "
+                f"and '{parent_id}' in parents and trashed = false"
+            )
+            res = self.service.files().list(q=query, fields="files(id)").execute()
+            files = res.get("files", [])
+            if files:
+                return files[0]["id"]
 
-        metadata = {"name": name, "mimeType": FOLDER_MIME, "parents": [parent_id]}
-        folder = self.service.files().create(body=metadata, fields="id").execute()
-        return folder["id"]
+            metadata = {"name": name, "mimeType": FOLDER_MIME, "parents": [parent_id]}
+            folder = self.service.files().create(body=metadata, fields="id").execute()
+            return folder["id"]
 
     def _find_folder(self, name: str, parent_id: str) -> Optional[str]:
         """Find a folder without creating it."""
@@ -41,8 +52,11 @@ class GoogleDriveProvider(CloudProvider):
             f"name = '{name}' and mimeType = '{FOLDER_MIME}' "
             f"and '{parent_id}' in parents and trashed = false"
         )
-        files = self.service.files().list(q=query, fields="files(id)").execute().get(
-            "files", []
+        files = (
+            self.service.files()
+            .list(q=query, fields="files(id)")
+            .execute()
+            .get("files", [])
         )
         return files[0]["id"] if files else None
 

@@ -26,9 +26,7 @@ def build_provider(args):
             if not value
         ]
         if missing:
-            raise ValueError(
-                f"{args.provider} requires: {', '.join(missing)}"
-            )
+            raise ValueError(f"{args.provider} requires: {', '.join(missing)}")
 
         from .providers import S3Provider
 
@@ -50,6 +48,18 @@ def main():
     common.add_argument("--provider", choices=PROVIDERS.keys(), required=True)
     common.add_argument("--remote-root", default="")
     common.add_argument("--db", default=".cloudsync_state.db")
+    common.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Number of concurrent workers for operations",
+    )
+    common.add_argument(
+        "--ignore",
+        action="append",
+        default=[],
+        help="Glob pattern of file/directory names to ignore",
+    )
     # gdrive options
     common.add_argument("--credentials", default="credentials.json")
     common.add_argument("--token", default="token.json")
@@ -83,12 +93,18 @@ def main():
             remote_root=args.remote_root,
             state=state,
             delete_remote=not args.no_delete,
+            workers=args.workers,
+            ignore_patterns=args.ignore,
         )
         state.close()
         print(result)
 
     elif args.command == "quota":
-        info = check_quota(args.local_dir, provider)
+        info = check_quota(
+            args.local_dir,
+            provider,
+            ignore_patterns=args.ignore,
+        )
         print(info)
 
 

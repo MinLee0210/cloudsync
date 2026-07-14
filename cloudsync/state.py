@@ -13,7 +13,7 @@ class SyncState:
     """Persists the last-known mapping of local path -> remote file info."""
 
     def __init__(self, db_path: str = ".cloudsync_state.db"):
-        self.conn = sqlite3.connect(db_path)
+        self.conn = sqlite3.connect(db_path, check_same_thread=False)
         self.conn.execute("""
             CREATE TABLE IF NOT EXISTS sync_state (
                 path TEXT PRIMARY KEY,

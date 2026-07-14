@@ -14,14 +14,14 @@ result = sync("./archive", provider, remote_root="backups", delete_remote=False)
 print(result.uploaded, result.updated, result.skipped)
 ```
 
-`sync(local_dir, provider, remote_root="", state=None, delete_remote=True)` returns a `SyncResult` with four lists: `uploaded`, `updated`, `deleted`, and `skipped`.
+`sync(local_dir, provider, remote_root="", state=None, delete_remote=True, workers=1, ignore_patterns=None)` returns a `SyncResult` with four lists: `uploaded`, `updated`, `deleted`, and `skipped`.
 
 ## `check_quota`
 
 ```python
 from cloudsync import check_quota
 
-info = check_quota("./archive", provider)
+info = check_quota("./archive", provider, ignore_patterns=["*.tmp"])
 ```
 
 The result contains `local_size`, `remote_usage`, `remote_limit`, `remote_available`, and `fits`.
@@ -31,8 +31,8 @@ The result contains `local_size`, `remote_usage`, `remote_limit`, `remote_availa
 ```python
 from cloudsync import get_dir_size, scan_dir
 
-files = scan_dir("./archive")
-total_bytes = get_dir_size("./archive")
+files = scan_dir("./archive", ignore_patterns=["node_modules/"])
+total_bytes = get_dir_size("./archive", ignore_patterns=["node_modules/"])
 ```
 
 Scanning a missing path raises `FileNotFoundError`.

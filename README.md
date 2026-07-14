@@ -1,61 +1,172 @@
 # cloudsync
 
-Sync a local directory to cloud storage (Google Drive, S3, MinIO), with quota checking.
+**A predictable, one-way sync from local directories to cloud storage.**
 
-Read the full documentation at [minlee0210.github.io/cloudsync](https://minlee0210.github.io/cloudsync/).
+`cloudsync` mirrors a local directory to Google Drive, Amazon S3, or an S3-compatible service such as MinIO. It uses a small SQLite ledger to identify unchanged files, preserve remote IDs, and make repeat runs efficient.
 
-## Install
+[![Tests](https://img.shields.io/badge/tests-5%20passed-246b56)](tests/)
+[![Python](https://img.shields.io/badge/python-3.9%2B-246b56)](pyproject.toml)
+
+## Features
+
+- Upload new files and update files whose content changed.
+- Skip unchanged files using content hashes.
+- Delete remote files removed locally, with an explicit `--no-delete` safeguard.
+- Check local size against provider quota information.
+- Support Google Drive, AWS S3, and MinIO through one provider interface.
+- Expose both a command-line interface and a Python API.
+- Fail safely when the local directory is missing instead of treating it as empty.
+
+## Installation
+
+Requires Python 3.9 or newer.
 
 ```bash
-pip install -e .
+python -m pip install -e .
 ```
 
-## Google Drive setup
+For development:
 
-1. Create OAuth client credentials (Desktop app) in Google Cloud Console, download as `credentials.json`.
-2. First run opens a browser for consent; token is cached in `token.json`.
-
-## Usage (Python)
-
-```python
-from cloudsync import GoogleDriveProvider, sync, check_quota
-
-provider = GoogleDriveProvider(
-    credentials_file="credentials.json",
-    root_folder_id="root",  # or a specific Drive folder ID
-)
-
-print(check_quota("/path/to/local/dir", provider))
-print(sync("/path/to/local/dir", provider, remote_root="backup"))
+```bash
+python -m pip install -e '.[dev]'
+pytest -q
 ```
+
+Build or preview the documentation site:
+
+```bash
+python -m pip install -e '.[docs]'
+mkdocs serve
+```
+
+The documentation is also available in [`docs/`](docs/) and is configured for GitHub Pages at [minlee0210.github.io/cloudsync](https://minlee0210.github.io/cloudsync/).
+
+## Quick start
+
+### Google Drive
+
+Create a Desktop OAuth client, enable the Google Drive API, and save the downloaded client configuration as `credentials.json`. The first run opens a browser for consent and caches the token in `token.json`.
+
+```bash
+cloudsync sync ./archive \
+  --provider gdrive \
+  --remote-root backups
+```
+
+Use `--root-folder-id` to sync below a specific Drive folder.
+
+### Amazon S3
+
+```bash
+cloudsync sync ./archive \
+  --provider s3 \
+  --bucket my-bucket \
+  --access-key "$AWS_ACCESS_KEY_ID" \
+  --secret-key "$AWS_SECRET_ACCESS_KEY" \
+  --remote-root backups
+```
+
+### MinIO
+
+```bash
+cloudsync sync ./archive \
+  --provider minio \
+  --bucket backups \
+  --access-key minioadmin \
+  --secret-key minioadmin \
+  --endpoint-url http://localhost:9000
+```
+
+## Sync behavior
+
+Each run follows this sequence:
+
+1. Validate and recursively scan the local directory.
+2. Compare file hashes with the local SQLite ledger.
+3. Upload new files and update changed files.
+4. Skip files with unchanged content.
+5. Delete tracked remote files that no longer exist locally, unless deletion is disabled.
+
+The default state database is `.cloudsync_state.db`. Use a separate `--db` path for each local directory and remote destination.
+
+> **Warning:** Remote deletion is enabled by default. Use `--no-delete` during initial setup, credential testing, or migration work.
+
+## CLI reference
+
+```bash
+# Sync a directory
+cloudsync sync LOCAL_DIR --provider PROVIDER [OPTIONS]
+
+# Check storage before syncing
+cloudsync quota LOCAL_DIR --provider PROVIDER [OPTIONS]
+```
+
+Common options:
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `--provider` | required | `gdrive`, `s3`, or `minio` |
+| `--remote-root` | empty | Remote folder or object prefix |
+| `--db` | `.cloudsync_state.db` | SQLite ledger location |
+| `--no-delete` | disabled | Prevent remote cleanup during sync |
+
+Provider-specific options are documented in the [CLI reference](docs/reference/cli.md).
+
+## Python API
 
 ```python
 from cloudsync import S3Provider, sync
 
-# Works for AWS S3 or MinIO
 provider = S3Provider(
     bucket="my-bucket",
     access_key="...",
     secret_key="...",
-    endpoint_url="http://localhost:9000",  # omit for AWS S3
 )
 
-print(sync("/path/to/local/dir", provider, remote_root="backup"))
+result = sync(
+    "./archive",
+    provider,
+    remote_root="backups",
+    delete_remote=False,
+)
+
+print(result.uploaded)
+print(result.updated)
+print(result.skipped)
 ```
 
-## CLI
+The main public functions are:
 
-```bash
-cloudsync sync /path/to/dir --provider gdrive --remote-root backup
-cloudsync quota /path/to/dir --provider gdrive
+- `sync(...)`, returning a `SyncResult` with `uploaded`, `updated`, `deleted`, and `skipped` paths.
+- `check_quota(...)`, returning local size, remote usage, quota, availability, and fit status.
+- `scan_dir(...)` and `get_dir_size(...)` for local filesystem inspection.
 
-cloudsync sync /path/to/dir --provider minio --bucket mybucket \
-    --access-key KEY --secret-key SECRET --endpoint-url http://localhost:9000
+## Extending cloudsync
+
+Implement `cloudsync.providers.base.CloudProvider` and register the provider in `cloudsync.providers.PROVIDERS`.
+
+The interface requires:
+
+```python
+list_files(remote_path="")
+upload(local_path, remote_path)
+update(remote_id, local_path)
+delete(remote_id)
+get_storage_info()
 ```
 
-## Adding a new provider
+See the [provider guide](docs/reference/providers.md) for details.
 
-Implement `cloudsync.providers.base.CloudProvider`:
-- `list_files`, `upload`, `update`, `delete`, `get_storage_info`
+## Project documentation
 
-Register it in `cloudsync/providers/__init__.py`'s `PROVIDERS` dict.
+- [Installation](docs/guides/installation.md)
+- [Sync model and safety](docs/guides/sync-model.md)
+- [Google Drive](docs/guides/google-drive.md)
+- [S3 and MinIO](docs/guides/s3-minio.md)
+- [CLI reference](docs/reference/cli.md)
+- [Python API reference](docs/reference/python-api.md)
+- [Contributing](docs/contributing.md)
+
+## License
+
+No license file is currently included in this repository.

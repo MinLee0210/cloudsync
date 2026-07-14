@@ -68,3 +68,24 @@ def test_sync_updates_changed_files_and_deletes_removed_files(tmp_path):
     assert deleted.deleted == ["hello.txt"]
     assert [call[0] for call in provider.calls] == ["upload", "update", "delete"]
     state.close()
+
+
+def test_sync_with_concurrent_workers(tmp_path):
+    local_dir = tmp_path / "local"
+    local_dir.mkdir()
+    (local_dir / "file1.txt").write_text("content1")
+    (local_dir / "file2.txt").write_text("content2")
+    (local_dir / "file3.txt").write_text("content3")
+
+    provider = FakeProvider()
+    state = SyncState(str(tmp_path / "state.db"))
+
+    result = sync(str(local_dir), provider, state=state, workers=3)
+
+    assert set(result.uploaded) == {"file1.txt", "file2.txt", "file3.txt"}
+    # Verify that the database was correctly updated for all files
+    all_records = state.get_all()
+    assert "file1.txt" in all_records
+    assert "file2.txt" in all_records
+    assert "file3.txt" in all_records
+    state.close()

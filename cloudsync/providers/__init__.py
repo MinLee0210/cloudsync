@@ -18,6 +18,7 @@ def __getattr__(name):
         return import_module(".s3", __name__).S3Provider
     raise AttributeError(name)
 
+
 __all__ = [
     "CloudProvider",
     "RemoteFile",
