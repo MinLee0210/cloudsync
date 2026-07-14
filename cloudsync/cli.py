@@ -16,6 +16,20 @@ def build_provider(args):
             root_folder_id=args.root_folder_id or "root",
         )
     elif args.provider in ("s3", "minio"):
+        missing = [
+            name
+            for name, value in (
+                ("--bucket", args.bucket),
+                ("--access-key", args.access_key),
+                ("--secret-key", args.secret_key),
+            )
+            if not value
+        ]
+        if missing:
+            raise ValueError(
+                f"{args.provider} requires: {', '.join(missing)}"
+            )
+
         from .providers import S3Provider
 
         return S3Provider(
@@ -56,7 +70,10 @@ def main():
     sub.add_parser("quota", parents=[common])
 
     args = parser.parse_args()
-    provider = build_provider(args)
+    try:
+        provider = build_provider(args)
+    except ValueError as exc:
+        parser.error(str(exc))
 
     if args.command == "sync":
         state = SyncState(args.db)

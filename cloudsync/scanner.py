@@ -20,6 +20,9 @@ def _md5(path: str, chunk_size: int = 1 << 20) -> str:
 
 def scan_dir(root: str) -> Dict[str, LocalFile]:
     """Return mapping of relative path (posix-style) -> LocalFile."""
+    if not os.path.isdir(root):
+        raise FileNotFoundError(f"Local directory does not exist: {root}")
+
     result: Dict[str, LocalFile] = {}
     for dirpath, _, filenames in os.walk(root):
         for name in filenames:

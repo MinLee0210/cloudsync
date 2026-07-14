@@ -1,7 +1,15 @@
 from .sync import sync, check_quota, SyncResult
 from .state import SyncState
 from .scanner import scan_dir, get_dir_size
-from .providers import CloudProvider, GoogleDriveProvider, S3Provider, PROVIDERS
+from .providers import CloudProvider, PROVIDERS
+
+
+def __getattr__(name):
+    if name in {"GoogleDriveProvider", "S3Provider"}:
+        from . import providers
+
+        return getattr(providers, name)
+    raise AttributeError(name)
 
 __all__ = [
     "sync",

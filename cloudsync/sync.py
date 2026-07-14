@@ -39,38 +39,41 @@ def sync(
     if own_state:
         state = SyncState()
 
-    result = SyncResult()
-    local_files = scan_dir(local_dir)
-    known = state.get_all()
+    try:
+        result = SyncResult()
+        # Scan completely before changing the provider. A scan error must not
+        # be interpreted as an empty local directory.
+        local_files = scan_dir(local_dir)
+        known = state.get_all()
 
-    # Upload new / changed files
-    for rel_path, lf in local_files.items():
-        record = known.get(rel_path)
-        remote_path = f"{remote_root}/{rel_path}" if remote_root else rel_path
+        # Upload new / changed files
+        for rel_path, lf in local_files.items():
+            record = known.get(rel_path)
+            remote_path = f"{remote_root}/{rel_path}" if remote_root else rel_path
 
-        if record is None:
-            remote_id = provider.upload(lf.path, remote_path)
-            state.set(rel_path, remote_id, lf.hash, lf.size, lf.mtime)
-            result.uploaded.append(rel_path)
-        elif record.hash != lf.hash:
-            provider.update(record.remote_id, lf.path)
-            state.set(rel_path, record.remote_id, lf.hash, lf.size, lf.mtime)
-            result.updated.append(rel_path)
-        else:
-            result.skipped.append(rel_path)
+            if record is None:
+                remote_id = provider.upload(lf.path, remote_path)
+                state.set(rel_path, remote_id, lf.hash, lf.size, lf.mtime)
+                result.uploaded.append(rel_path)
+            elif record.hash != lf.hash:
+                provider.update(record.remote_id, lf.path)
+                state.set(rel_path, record.remote_id, lf.hash, lf.size, lf.mtime)
+                result.updated.append(rel_path)
+            else:
+                result.skipped.append(rel_path)
 
-    # Delete files that no longer exist locally
-    if delete_remote:
-        for rel_path, record in known.items():
-            if rel_path not in local_files:
-                provider.delete(record.remote_id)
-                state.delete(rel_path)
-                result.deleted.append(rel_path)
+        # Delete files that no longer exist locally
+        if delete_remote:
+            for rel_path, record in known.items():
+                if rel_path not in local_files:
+                    provider.delete(record.remote_id)
+                    state.delete(rel_path)
+                    result.deleted.append(rel_path)
 
-    if own_state:
-        state.close()
-
-    return result
+        return result
+    finally:
+        if own_state:
+            state.close()
 
 
 def check_quota(local_dir: str, provider: CloudProvider) -> dict:

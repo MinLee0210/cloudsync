@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Dict, Optional
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
@@ -35,20 +35,41 @@ class GoogleDriveProvider(CloudProvider):
         folder = self.service.files().create(body=metadata, fields="id").execute()
         return folder["id"]
 
-    def _resolve_parent(self, remote_path: str) -> str:
-        """Walk/create folder path components, return the final folder id."""
+    def _find_folder(self, name: str, parent_id: str) -> Optional[str]:
+        """Find a folder without creating it."""
+        query = (
+            f"name = '{name}' and mimeType = '{FOLDER_MIME}' "
+            f"and '{parent_id}' in parents and trashed = false"
+        )
+        files = self.service.files().list(q=query, fields="files(id)").execute().get(
+            "files", []
+        )
+        return files[0]["id"] if files else None
+
+    def _resolve_parent(self, remote_path: str, create: bool = True) -> Optional[str]:
+        """Walk a folder path, optionally creating missing components."""
         parent_id = self.root_folder_id
         parts = [p for p in remote_path.split("/") if p]
         for part in parts:
-            parent_id = self._ensure_folder(part, parent_id)
+            parent_id = (
+                self._ensure_folder(part, parent_id)
+                if create
+                else self._find_folder(part, parent_id)
+            )
+            if parent_id is None:
+                return None
         return parent_id
 
     # ------------------------------------------------------------------
     def list_files(self, remote_path: str = "") -> Dict[str, RemoteFile]:
         """Recursively list all non-folder files under remote_path."""
         root_id = (
-            self._resolve_parent(remote_path) if remote_path else self.root_folder_id
+            self._resolve_parent(remote_path, create=False)
+            if remote_path
+            else self.root_folder_id
         )
+        if root_id is None:
+            return {}
         result: Dict[str, RemoteFile] = {}
         self._walk(root_id, "", result)
         return result
