@@ -1,23 +1,17 @@
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from typing import Dict, Optional
 
 
+@dataclass(frozen=True)
 class RemoteFile:
     """Represents a file on the remote provider."""
 
-    __slots__ = ("id", "path", "size", "mtime", "hash")
-
-    def __init__(
-        self, id: str, path: str, size: int, mtime: float, hash: Optional[str] = None
-    ):
-        self.id = id
-        self.path = path
-        self.size = size
-        self.mtime = mtime
-        self.hash = hash
-
-    def __repr__(self):
-        return f"RemoteFile(path={self.path!r}, id={self.id!r}, size={self.size})"
+    id: str
+    path: str
+    size: int
+    mtime: object
+    hash: Optional[str] = None
 
 
 class CloudProvider(ABC):
@@ -42,3 +36,7 @@ class CloudProvider(ABC):
     @abstractmethod
     def get_storage_info(self) -> dict:
         """Return {'usage': int, 'limit': Optional[int], 'available': Optional[int]}."""
+
+    def identity(self) -> str:
+        """Stable destination identity used to isolate synchronization state."""
+        return self.__class__.__qualname__

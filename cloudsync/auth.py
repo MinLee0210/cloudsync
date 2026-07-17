@@ -1,4 +1,6 @@
 import os
+import stat
+from typing import cast
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -23,5 +25,6 @@ def get_credentials(
 
         with open(token_file, "w") as f:
             f.write(creds.to_json())
+        os.chmod(token_file, stat.S_IRUSR | stat.S_IWUSR)
 
-    return creds
+    return cast(Credentials, creds)

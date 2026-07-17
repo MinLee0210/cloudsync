@@ -11,20 +11,32 @@ class S3Provider(CloudProvider):
     def __init__(
         self,
         bucket: str,
-        access_key: str,
-        secret_key: str,
+        access_key: Optional[str] = None,
+        secret_key: Optional[str] = None,
         endpoint_url: Optional[str] = None,
         region: str = "us-east-1",
+        session_token: Optional[str] = None,
+        profile: Optional[str] = None,
+        verify: Optional[bool] = None,
     ):
         self.bucket = bucket
-        self.client = boto3.client(
+        session = boto3.Session(profile_name=profile) if profile else boto3.Session()
+        self.endpoint_url = endpoint_url
+        self.region = region
+        self.client = session.client(
             "s3",
             endpoint_url=endpoint_url,  # None -> AWS; set for MinIO e.g. http://localhost:9000
             aws_access_key_id=access_key,
             aws_secret_access_key=secret_key,
+            aws_session_token=session_token,
             region_name=region,
+            verify=verify,
             config=Config(signature_version="s3v4"),
         )
+
+    def identity(self) -> str:
+        endpoint = self.endpoint_url or "aws"
+        return f"s3:{endpoint}:{self.region}:{self.bucket}"
 
     # ------------------------------------------------------------------
     def list_files(self, remote_path: str = "") -> Dict[str, RemoteFile]:
@@ -39,12 +51,14 @@ class S3Provider(CloudProvider):
                 rel_path = obj["Key"][len(prefix) :]
                 if not rel_path:
                     continue
+                etag = obj.get("ETag", "").strip('"')
                 result[rel_path] = RemoteFile(
                     id=obj["Key"],
                     path=rel_path,
                     size=obj["Size"],
                     mtime=obj["LastModified"].isoformat(),
-                    hash=obj.get("ETag", "").strip('"'),
+                    # Multipart ETags contain a dash and are not content MD5 values.
+                    hash=etag if "-" not in etag else None,
                 )
         return result
 

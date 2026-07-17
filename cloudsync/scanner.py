@@ -1,106 +1,82 @@
+from __future__ import annotations
+
 import fnmatch
 import hashlib
 import os
-from typing import Dict, List, NamedTuple, Optional
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Dict, Iterable, Optional
 
 
-class LocalFile(NamedTuple):
-    path: str  # absolute path
+@dataclass(frozen=True)
+class LocalFile:
+    path: str
     size: int
     mtime: float
-    hash: str  # md5
+    hash: str
+
+
+class ScanError(RuntimeError):
+    pass
 
 
 def _md5(path: str, chunk_size: int = 1 << 20) -> str:
-    h = hashlib.md5()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(chunk_size), b""):
-            h.update(chunk)
-    return h.hexdigest()
-
-
-def parse_ignore_patterns(
-    root: str, additional_patterns: Optional[List[str]] = None
-) -> List[str]:
-    patterns = []
-    ignore_file = os.path.join(root, ".cloudsyncignore")
-    if os.path.isfile(ignore_file):
-        with open(ignore_file, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith("#"):
-                    patterns.append(line)
-    if additional_patterns:
-        for pat in additional_patterns:
-            pat = pat.strip()
-            if pat and not pat.startswith("#"):
-                patterns.append(pat)
-    return patterns
-
-
-def should_ignore(rel_path: str, patterns: List[str]) -> bool:
-    parts = rel_path.split("/")
-    for pattern in patterns:
-        pat = pattern.rstrip("/")
-        if "/" not in pat:
-            if any(fnmatch.fnmatch(part, pat) for part in parts):
-                return True
-        else:
-            if pat.startswith("/"):
-                pat_match = pat[1:]
-            else:
-                pat_match = pat
-            if fnmatch.fnmatch(rel_path, pat_match):
-                return True
-            prefix_matched = False
-            for i in range(1, len(parts)):
-                prefix = "/".join(parts[:i])
-                if fnmatch.fnmatch(prefix, pat_match):
-                    prefix_matched = True
-                    break
-            if prefix_matched:
-                return True
-    return False
+    digest = hashlib.md5(usedforsecurity=False)
+    with open(path, "rb") as file:
+        for chunk in iter(lambda: file.read(chunk_size), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def scan_dir(
-    root: str, ignore_patterns: Optional[List[str]] = None
+    root: str,
+    *,
+    exclude: Iterable[str] = (),
+    state_path: Optional[str] = None,
+    follow_symlinks: bool = False,
 ) -> Dict[str, LocalFile]:
-    """Return mapping of relative path (posix-style) -> LocalFile."""
-    if not os.path.isdir(root):
-        raise FileNotFoundError(f"Local directory does not exist: {root}")
-
-    patterns = parse_ignore_patterns(root, ignore_patterns)
+    """Return a stable mapping of POSIX-style relative paths to local files."""
+    root_path = Path(root).expanduser().resolve()
+    if not root_path.exists():
+        raise ScanError(f"Local root does not exist: {root_path}")
+    if not root_path.is_dir():
+        raise ScanError(f"Local root is not a directory: {root_path}")
+    if not os.access(root_path, os.R_OK | os.X_OK):
+        raise ScanError(f"Local root is not readable: {root_path}")
+    ignored_state = str(Path(state_path).resolve()) if state_path else None
     result: Dict[str, LocalFile] = {}
-
-    for dirpath, dirnames, filenames in os.walk(root):
-        # Filter dirnames in-place to avoid entering ignored directories
-        rel_dir = os.path.relpath(dirpath, root)
-        if rel_dir == ".":
-            rel_dir_prefix = ""
-        else:
-            rel_dir_prefix = rel_dir.replace(os.sep, "/") + "/"
-
-        for d in list(dirnames):
-            rel_d_path = rel_dir_prefix + d
-            if should_ignore(rel_d_path, patterns):
-                dirnames.remove(d)
-
-        for name in filenames:
-            abs_path = os.path.join(dirpath, name)
-            rel_path = os.path.relpath(abs_path, root).replace(os.sep, "/")
-            if should_ignore(rel_path, patterns):
-                continue
-            stat = os.stat(abs_path)
-            result[rel_path] = LocalFile(
-                path=abs_path,
-                size=stat.st_size,
-                mtime=stat.st_mtime,
-                hash=_md5(abs_path),
-            )
+    try:
+        for dirpath, dirnames, filenames in os.walk(root_path, followlinks=follow_symlinks):
+            dirnames.sort()
+            filenames.sort()
+            for name in filenames:
+                absolute = os.path.join(dirpath, name)
+                relative = os.path.relpath(absolute, root_path).replace(os.sep, "/")
+                if any(fnmatch.fnmatch(relative, pattern) for pattern in exclude):
+                    continue
+                resolved = str(Path(absolute).resolve())
+                state_files = {
+                    ignored_state,
+                    f"{ignored_state}-wal",
+                    f"{ignored_state}-shm",
+                    f"{ignored_state}-journal",
+                }
+                if ignored_state and resolved in state_files:
+                    continue
+                if os.path.islink(absolute) and not follow_symlinks:
+                    continue
+                before = os.stat(absolute, follow_symlinks=follow_symlinks)
+                if not os.path.isfile(absolute):
+                    continue
+                content_hash = _md5(absolute)
+                after = os.stat(absolute, follow_symlinks=follow_symlinks)
+                if (before.st_size, before.st_mtime_ns) != (after.st_size, after.st_mtime_ns):
+                    raise ScanError(f"File changed while scanning: {absolute}")
+                result[relative] = LocalFile(absolute, after.st_size, after.st_mtime, content_hash)
+    except OSError as exc:
+        raise ScanError(f"Could not scan {root_path}: {exc}") from exc
     return result
 
 
-def get_dir_size(root: str, ignore_patterns: Optional[List[str]] = None) -> int:
-    """Total size in bytes of all files under root."""
-    return sum(f.size for f in scan_dir(root, ignore_patterns=ignore_patterns).values())
+def get_dir_size(root: str, **kwargs) -> int:
+    return sum(file.size for file in scan_dir(root, **kwargs).values())

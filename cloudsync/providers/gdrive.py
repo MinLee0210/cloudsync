@@ -29,27 +29,15 @@ class GoogleDriveProvider(CloudProvider):
             self._thread_local.service = build("drive", "v3", credentials=self.creds)
         return self._thread_local.service
 
+    def identity(self) -> str:
+        return f"gdrive:{self.root_folder_id}"
+
     # ------------------------------------------------------------------
     def _ensure_folder(self, name: str, parent_id: str) -> str:
         """Get or create a folder named `name` under parent_id, return its id."""
-        with self._lock:
-            query = (
-                f"name = '{name}' and mimeType = '{FOLDER_MIME}' "
-                f"and '{parent_id}' in parents and trashed = false"
-            )
-            res = self.service.files().list(q=query, fields="files(id)").execute()
-            files = res.get("files", [])
-            if files:
-                return files[0]["id"]
-
-            metadata = {"name": name, "mimeType": FOLDER_MIME, "parents": [parent_id]}
-            folder = self.service.files().create(body=metadata, fields="id").execute()
-            return folder["id"]
-
-    def _find_folder(self, name: str, parent_id: str) -> Optional[str]:
-        """Find a folder without creating it."""
+        escaped_name = name.replace("\\", "\\\\").replace("'", "\\'")
         query = (
-            f"name = '{name}' and mimeType = '{FOLDER_MIME}' "
+            f"name = '{escaped_name}' and mimeType = '{FOLDER_MIME}' "
             f"and '{parent_id}' in parents and trashed = false"
         )
         files = (
@@ -60,31 +48,42 @@ class GoogleDriveProvider(CloudProvider):
         )
         return files[0]["id"] if files else None
 
-    def _resolve_parent(self, remote_path: str, create: bool = True) -> Optional[str]:
-        """Walk a folder path, optionally creating missing components."""
+        metadata = {"name": name, "mimeType": FOLDER_MIME, "parents": [parent_id]}
+        folder = self.service.files().create(body=metadata, fields="id").execute()
+        return folder["id"]
+
+    def _resolve_parent(self, remote_path: str, *, create: bool = True) -> str:
+        """Walk/create folder path components, return the final folder id."""
         parent_id = self.root_folder_id
         parts = [p for p in remote_path.split("/") if p]
         for part in parts:
-            parent_id = (
-                self._ensure_folder(part, parent_id)
-                if create
-                else self._find_folder(part, parent_id)
-            )
-            if parent_id is None:
-                return None
+            if create:
+                parent_id = self._ensure_folder(part, parent_id)
+            else:
+                escaped = part.replace("\\", "\\\\").replace("'", "\\'")
+                query = f"name = '{escaped}' and mimeType = '{FOLDER_MIME}' and '{parent_id}' in parents and trashed = false"
+                files = (
+                    self.service.files()
+                    .list(q=query, fields="files(id)")
+                    .execute()
+                    .get("files", [])
+                )
+                if not files:
+                    return ""
+                parent_id = files[0]["id"]
         return parent_id
 
     # ------------------------------------------------------------------
     def list_files(self, remote_path: str = "") -> Dict[str, RemoteFile]:
         """Recursively list all non-folder files under remote_path."""
         root_id = (
-            self._resolve_parent(remote_path, create=False)
-            if remote_path
-            else self.root_folder_id
+            self._resolve_parent(remote_path, create=False) if remote_path else self.root_folder_id
         )
         if root_id is None:
             return {}
         result: Dict[str, RemoteFile] = {}
+        if not root_id:
+            return result
         self._walk(root_id, "", result)
         return result
 
@@ -130,11 +129,7 @@ class GoogleDriveProvider(CloudProvider):
 
         metadata = {"name": filename, "parents": [parent_id]}
         media = MediaFileUpload(local_path, resumable=True)
-        f = (
-            self.service.files()
-            .create(body=metadata, media_body=media, fields="id")
-            .execute()
-        )
+        f = self.service.files().create(body=metadata, media_body=media, fields="id").execute()
         return f["id"]
 
     def update(self, remote_id: str, local_path: str) -> None:
