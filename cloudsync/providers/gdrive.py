@@ -1,5 +1,5 @@
 import threading
-from typing import Dict, Optional
+from typing import Dict
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
@@ -40,13 +40,9 @@ class GoogleDriveProvider(CloudProvider):
             f"name = '{escaped_name}' and mimeType = '{FOLDER_MIME}' "
             f"and '{parent_id}' in parents and trashed = false"
         )
-        files = (
-            self.service.files()
-            .list(q=query, fields="files(id)")
-            .execute()
-            .get("files", [])
-        )
-        return files[0]["id"] if files else None
+        files = self.service.files().list(q=query, fields="files(id)").execute().get("files", [])
+        if files:
+            return files[0]["id"]
 
         metadata = {"name": name, "mimeType": FOLDER_MIME, "parents": [parent_id]}
         folder = self.service.files().create(body=metadata, fields="id").execute()
